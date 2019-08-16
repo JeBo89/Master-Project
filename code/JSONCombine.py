@@ -11,7 +11,7 @@ subdirs = next(os.walk('.'))[1]
 print(subdirs)
 
 # Create a workbook and add a worksheet
-workbook = xlsxwriter.Workbook('Plie_Keypoints.xlsx')
+workbook = xlsxwriter.Workbook('Plie_Keypoints_new.xlsx')
 
 # Add a bold format to use to highlight cells
 bold = workbook.add_format({'bold': True})
@@ -106,7 +106,8 @@ for x in range(len(subdirs)):
     worksheet.write('BV1', 'RHeelX', bold)
     worksheet.write('BW1', 'RHeelY', bold)
     worksheet.write('BX1', 'RHeelC', bold)
-    #worksheet.write('BY1', 'Class', bold)
+    worksheet.write('BY1', 'Label', bold)
+    worksheet.write('BZ1', 'MovementID', bold)
     # Start from the first cell below the headers.
     row = 0
     col = 0
@@ -118,6 +119,8 @@ for x in range(len(subdirs)):
             row += 1
             col += 1
             colloop = 1
+            id = 3
+            label = 2
             with open(filename) as json_data:
                 data = json.load(json_data)
                 #Create Frame # row in the Excel
@@ -135,11 +138,15 @@ for x in range(len(subdirs)):
                 for bla in range(0,74):
                     worksheet.write_number(row,colloop,pose[bla])
                     colloop += 1
+                    id += 1
+                    label += 1
                 #worksheet.write(row,colloop,pose[1])
                 #colloop += 1
                 #worksheet.write(row,colloop,pose[2])
                 #colloop += 1
                 worksheet.write(row,colloop,pose[3])
+                worksheet.write(row,label,filename[:4])
+                worksheet.write(row,id,filename[:-28])
                 #print("\n Body keypoints - Frame",count,":")
                 #print(pose)
                 #print("\n Left hand keypoints - Frame",count,":")
