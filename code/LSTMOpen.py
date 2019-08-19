@@ -8,23 +8,24 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import precision_score
-from sklearn.metrics import recall_score
-from sklearn.metrics import f1_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc
 from keras import utils as np_utils
+from scipy import interp
+from itertools import cycle
 import tensorflow as tf
 from tensorflow.keras import layers
 from keras.utils.vis_utils import plot_model
 import sys
+import seaborn as sn
 
 
 data_dim = 75
 num_classes = 3
-timesteps = 250
-epochs = 15
-batch_size = 1
-label_columns = 3
+timesteps = 180
+epochs = 30
+batch_size = 60
+adam_lr = 0.0001
+n_classes = 3
 
 keypoints = pd.read_csv('keypoints_new.csv')
 print('Keypoints dataframe shape = ', keypoints.shape)
@@ -147,8 +148,8 @@ print(y_test.shape)
 # expected input data shape: (batch_size, timesteps, data_dim)
 model = Sequential()
 model.add(Masking(mask_value=0, input_shape=(timesteps, data_dim)))
-#model.add(LSTM(132, return_sequences=True))
-#model.add(LSTM(132, return_sequences=True))
+model.add(LSTM(132, return_sequences=True))
+model.add(LSTM(132, return_sequences=True))
 model.add(LSTM(132, return_sequences=True))
 model.add(LSTM(132, return_sequences=False))
 model.add(Dense(64, activation='linear'))
@@ -156,10 +157,10 @@ model.add(Dense(3, activation='softmax'))
 
 model.summary()
 
-#plot_model(model, to_file='model_plot_1LSTM.png', show_shapes=True, show_layer_names=True)
+#plot_model(model, to_file='model_plot_3LSTM.png', show_shapes=True, show_layer_names=True)
 
 model.compile(loss='categorical_crossentropy',
-              optimizer = Adam(lr=0.00001),
+              optimizer = Adam(lr=adam_lr),
               metrics=['accuracy'])
 
 history = model.fit(X_train, y_train,
@@ -178,7 +179,7 @@ print('y_test:')
 print(y_test)
 print('y_pred:')
 print(y_pred)
-print(y_pred.shape)
+#print(y_pred.shape)
 
 y_pred_new = np.argmax(y_pred, axis=1)
 y_test_new = np.argmax(y_test, axis=1)
@@ -193,16 +194,18 @@ scores = model.evaluate(X_test, y_test, verbose=0)
 print("Accuracy of the model: %.2f%%" % (scores[1]*100))
 
 #Confution Matrix
+labels = ['Fondu','Jete','Plie']
 cm = confusion_matrix(y_test_new, y_pred_new)
 print(cm)
 
 fig1 = plt.figure()
-plt.matshow(cm)
+sn.heatmap(cm, annot=True, cmap='BuPu', xticklabels=labels, yticklabels=labels, linewidth=0.5)
+#plt.matshow(cm)
 plt.title('Confusion Matrix')
-plt.colorbar()
+#plt.colorbar()
 plt.ylabel('True Label')
 plt.xlabel('Predicated Label')
-plt.savefig('Results/confusion_matrix.jpg')
+plt.savefig('Results/confusion_matrix_testTestLowTS.jpg')
 
 recall = np.diag(cm) / np.sum(cm, axis=1)
 
@@ -225,8 +228,9 @@ plt.plot(history.history['val_acc'])
 plt.title('model accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
+plt.ylim(ymax = 1, ymin = 0)
 plt.legend(['train', 'test'], loc='upper left')
-plt.savefig('Results/HistoryAccuracy.jpg')
+plt.savefig('Results/HistoryAccuracy_testTestLowTS.jpg')
 # summarize history for loss
 fig3 = plt.figure()
 plt.plot(history.history['loss'])
@@ -234,5 +238,62 @@ plt.plot(history.history['val_loss'])
 plt.title('model loss')
 plt.ylabel('loss')
 plt.xlabel('epoch')
+plt.ylim(ymax = 1, ymin = 0)
 plt.legend(['train', 'test'], loc='upper left')
-plt.savefig('Results/HistoryLoss.jpg')
+plt.savefig('Results/HistoryLoss_testTestLowTS.jpg')
+
+# AUC plot:
+# Compute ROC curve and ROC area for each class
+
+lw = 2
+
+fpr = dict()
+tpr = dict()
+roc_auc = dict()
+for i in range(n_classes):
+    fpr[i], tpr[i], _ = roc_curve(y_test[:, i], y_pred[:, i])
+    roc_auc[i] = auc(fpr[i], tpr[i])
+
+fpr["micro"], tpr["micro"], _ = roc_curve(y_test.ravel(), y_pred.ravel())
+roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+
+all_fpr = np.unique(np.concatenate([fpr[i] for i in range(n_classes)]))
+
+# Then interpolate all ROC curves at this points
+mean_tpr = np.zeros_like(all_fpr)
+for i in range(n_classes):
+    mean_tpr += interp(all_fpr, fpr[i], tpr[i])
+
+# Finally average it and compute AUC
+mean_tpr /= n_classes
+
+fpr["macro"] = all_fpr
+tpr["macro"] = mean_tpr
+roc_auc["macro"] = auc(fpr["macro"], tpr["macro"])
+
+# Plot all ROC curves
+fig3 = plt.figure()
+plt.plot(fpr["micro"], tpr["micro"],
+         label='micro-average ROC curve (area = {0:0.2f})'
+               ''.format(roc_auc["micro"]),
+         color='deeppink', linestyle=':', linewidth=4)
+
+plt.plot(fpr["macro"], tpr["macro"],
+         label='macro-average ROC curve (area = {0:0.2f})'
+               ''.format(roc_auc["macro"]),
+         color='navy', linestyle=':', linewidth=4)
+
+colors = cycle(['aqua', 'darkorange', 'cornflowerblue'])
+for i, color in zip(range(n_classes), colors):
+    plt.plot(fpr[i], tpr[i], color=color, lw=lw,
+             label='ROC curve of class {0} (area = {1:0.2f})'
+             ''.format(i, roc_auc[i]))
+
+plt.plot([0, 1], [0, 1], 'k--', lw=lw)
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic')
+plt.legend(loc="lower right")
+plt.savefig('Results/AUC_testTestLowTS.jpg')
